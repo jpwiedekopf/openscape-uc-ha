@@ -14,6 +14,7 @@ from typing import Any
 from urllib.parse import quote
 
 import aiohttp
+from aiohttp.hdrs import USER_AGENT
 from yarl import URL
 
 from .const import LOGGER, REQUEST_TIMEOUT
@@ -25,6 +26,12 @@ USER_PATH = "/owc-servlets/user/"
 DEVICE_PATH = "/owc-servlets/user/{user_id}/device/"
 SESSION_COOKIE = "OpenScapeUC"
 LOGIN_COOKIES = frozenset({SESSION_COOKIE, "JSESSIONID"})
+
+# Sent instead of Home Assistant's user agent so requests look like the web client
+# running in Firefox.
+BROWSER_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:153.0) Gecko/20100101 Firefox/153.0"
+)
 
 ONS_PLACEHOLDER = "$ONS"
 ONS_DISPLAY_NAME = "Work phone"
@@ -306,10 +313,14 @@ class OpenScapeUCClient:
     ) -> aiohttp.ClientResponse:
         """Send a single request, mapping transport errors to connection errors."""
         url = self._base_url.join(URL(path))
+        # Home Assistant resets the session's default headers to its own user
+        # agent, so the override has to be passed with every request.
+        headers = {USER_AGENT: BROWSER_USER_AGENT, **kwargs.pop("headers", {})}
         try:
             return await self._session.request(
                 method,
                 url,
+                headers=headers,
                 timeout=aiohttp.ClientTimeout(total=REQUEST_TIMEOUT),
                 **kwargs,
             )
