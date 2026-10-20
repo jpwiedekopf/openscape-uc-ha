@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -204,7 +205,11 @@ class OpenScapeUCClient:
         response = await self._send(
             "POST",
             LOGIN_PATH,
-            json={"userId": self._username, "password": self._password},
+            # The web client sends the password Base64-encoded.
+            json={
+                "userId": self._username,
+                "password": base64.b64encode(self._password.encode()).decode(),
+            },
         )
         async with response:
             if response.status == HTTPStatus.UNAUTHORIZED:
