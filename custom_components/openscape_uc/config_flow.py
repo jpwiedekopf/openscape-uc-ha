@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+import aiohttp
 import voluptuous as vol
 from yarl import URL
 
@@ -57,6 +58,20 @@ class OpenScapeUCConfigFlow(ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
+    def __init__(self) -> None:
+        """Initialize the flow."""
+        # Sessions are reused across attempts within this flow. Home Assistant
+        # closes them on shutdown; integrations must not close them themselves.
+        self._sessions: dict[bool, aiohttp.ClientSession] = {}
+
+    def _get_session(self, trust_internal_certs: bool) -> aiohttp.ClientSession:
+        """Return a session for the given TLS setting, creating it if needed."""
+        if trust_internal_certs not in self._sessions:
+            self._sessions[trust_internal_certs] = create_session(
+                self.hass, trust_internal_certs
+            )
+        return self._sessions[trust_internal_certs]
+
     async def _async_validate_input(self, data: dict[str, Any]) -> dict[str, str]:
         """Try to log in with the given data and return any errors."""
         errors: dict[str, str] = {}
@@ -64,7 +79,7 @@ class OpenScapeUCConfigFlow(ConfigFlow, domain=DOMAIN):
         if url.scheme not in ("http", "https") or not url.host:
             return {CONF_URL: "invalid_url"}
 
-        session = create_session(self.hass, data[CONF_TRUST_INTERNAL_CERTS])
+        session = self._get_session(data[CONF_TRUST_INTERNAL_CERTS])
         client = OpenScapeUCClient(
             session, data[CONF_URL], data[CONF_USERNAME], data[CONF_PASSWORD]
         )
@@ -82,7 +97,7 @@ class OpenScapeUCConfigFlow(ConfigFlow, domain=DOMAIN):
             LOGGER.exception("Unexpected exception")
             errors["base"] = "unknown"
         finally:
-            await session.close()
+            session.cookie_jar.clear()
         return errors
 
     async def async_step_user(

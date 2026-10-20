@@ -32,6 +32,8 @@ def create_session(hass: HomeAssistant, trust_internal_certs: bool) -> aiohttp.C
 
     A dedicated session is required so the login cookies are not shared with
     the rest of Home Assistant. unsafe=True allows cookies from IP-address hosts.
+    The session must not be closed by the integration; Home Assistant closes it
+    on shutdown.
     """
     return async_create_clientsession(
         hass,
@@ -46,8 +48,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: OpenScapeUCConfigEntry) 
         hass,
         entry.data.get(CONF_TRUST_INTERNAL_CERTS, DEFAULT_TRUST_INTERNAL_CERTS),
     )
-    entry.async_on_unload(session.close)
-
     store = _session_store(hass, entry)
 
     async def _save_session() -> None:
@@ -63,8 +63,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: OpenScapeUCConfigEntry) 
 
     if stored := await store.async_load():
         client.restore_session(stored["cookies"])
-    # Unload callbacks run in reverse order, so this saves any cookies the
-    # server refreshed since the last login before the session is closed.
+    # Also save on unload to keep cookies the server refreshed since the last login.
     entry.async_on_unload(_save_session)
 
     try:
