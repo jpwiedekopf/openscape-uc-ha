@@ -11,6 +11,7 @@ from email.utils import format_datetime
 from http import HTTPStatus
 from http.cookies import Morsel
 from typing import Any
+from urllib.parse import quote
 
 import aiohttp
 from yarl import URL
@@ -20,6 +21,8 @@ from .const import LOGGER, REQUEST_TIMEOUT
 LOGIN_PATH = "/owc-servlets/login"
 CONFIG_PATH = "/owc-servlets/config"
 USER_PATH = "/owc-servlets/user/"
+# user_id is the userId from the user object and already ends in "@system".
+DEVICE_PATH = "/owc-servlets/user/{user_id}/device/"
 SESSION_COOKIE = "OpenScapeUC"
 LOGIN_COOKIES = frozenset({SESSION_COOKIE, "JSESSIONID"})
 
@@ -143,20 +146,56 @@ class OpenScapeUCClient:
 
     async def async_get_state(self) -> OpenScapeUCState:
         """Fetch the available devices and the preferred in- and outbound ones."""
+        data = await self._async_get_user()
+        try:
+            return OpenScapeUCState.from_user_json(data)
+        except (KeyError, TypeError) as err:
+            raise OpenScapeUCError(
+                f"Unexpected response from {USER_PATH}: {err!r}"
+            ) from err
+
+    async def async_select_device(self, device_id: str) -> None:
+        """Route in- and outbound calls to the given device.
+
+        The server expects the complete prefDeviceSettings object, with both
+        preferred devices replaced by the raw deviceList entry. The settings
+        are fetched fresh so the PUT is based on the server's current state.
+        """
+        data = await self._async_get_user()
+        try:
+            user_id: str = data["userId"]
+            settings: dict[str, Any] = data["prefDeviceSettings"]
+            device = next(d for d in settings["deviceList"] if d["id"] == device_id)
+        except StopIteration:
+            raise OpenScapeUCError(f"Device {device_id} is not available") from None
+        except (KeyError, TypeError) as err:
+            raise OpenScapeUCError(
+                f"Unexpected response from {USER_PATH}: {err!r}"
+            ) from err
+
+        payload = {
+            **settings,
+            "inBoundPreferredDevice": device,
+            "outBoundPreferredDevice": device,
+        }
+        path = DEVICE_PATH.format(user_id=quote(user_id, safe="@"))
+        response = await self._request("PUT", path, json=payload)
+        response.release()
+        LOGGER.debug("Preferred device set to %s", device.get("name", device_id))
+
+    async def _async_get_user(self) -> dict[str, Any]:
+        """Fetch the user object, which includes the preferred device settings."""
         response = await self._request("GET", USER_PATH)
         async with response:
             try:
                 data = await response.json(content_type=None)
-                return OpenScapeUCState.from_user_json(data)
-            except (aiohttp.ClientError, ValueError, KeyError, TypeError) as err:
+            except (aiohttp.ClientError, ValueError) as err:
                 raise OpenScapeUCError(
                     f"Unexpected response from {USER_PATH}: {err!r}"
                 ) from err
-
-    async def async_select_device(self, device_id: str) -> None:
-        """Route calls to the given device."""
-        # TODO: implement once the endpoint and payload are known.
-        raise NotImplementedError
+        if not isinstance(data, dict):
+            raise OpenScapeUCError(f"Unexpected response from {USER_PATH}: {data!r}")
+        return data
 
     async def async_logout(self) -> None:
         """End the server-side session, if supported."""
