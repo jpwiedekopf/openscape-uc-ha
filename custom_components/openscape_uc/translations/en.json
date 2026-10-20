@@ -1,0 +1,48 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to OpenScape UC",
+        "data": {
+          "url": "Web client URL",
+          "username": "Username",
+          "password": "Password",
+          "trust_internal_certs": "Trust internal certificates"
+        },
+        "data_description": {
+          "url": "Base URL of the OpenScape UC web client, e.g. https://uc.example.com",
+          "trust_internal_certs": "Skip TLS certificate verification. Enable this if the server uses a certificate signed by an internal CA."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reauthenticate OpenScape UC",
+        "description": "The password for {username} is no longer valid.",
+        "data": {
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect",
+      "invalid_auth": "Invalid authentication",
+      "invalid_url": "Invalid URL",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "This account is already configured",
+      "reauth_successful": "Re-authentication was successful"
+    }
+  },
+  "entity": {
+    "select": {
+      "preferred_device": {
+        "name": "Preferred device"
+      }
+    },
+    "sensor": {
+      "outbound_device": {
+        "name": "Outgoing device"
+      }
+    }
+  }
+}
